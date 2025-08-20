@@ -1,0 +1,21 @@
+name: Echo on file update
+
+on:
+  push:
+    branches: [ main ]          # <-- change if your branch is different
+    paths:
+      - index.html              # <-- or 'configs/app.env' or any glob like 'configs/**'
+
+  workflow_dispatch:            # optional: run manually from Actions tab
+
+jobs:
+  say-hi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show commit info
+        run: |
+          echo "Hello from Github Actions Triggered"
+          echo "Ref: $GITHUB_REF"
+          echo "SHA: $GITHUB_SHA"
+          echo "Actor: $GITHUB_ACTOR"
+          echo "Updated by: $GITHUB_EVENT_NAME"
