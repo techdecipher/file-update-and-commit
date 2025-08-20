@@ -9,12 +9,12 @@ on:
   workflow_dispatch:            # optional: run manually from Actions tab
 
 jobs:
-  say-hi:
+  Github-Actions-Trigger-Job:
     runs-on: ubuntu-latest
     steps:
       - name: Show commit info
         run: |
-          echo "Hello from Github Actions Triggered"
+          echo "Github Actions Triggered"
           echo "Ref: $GITHUB_REF"
           echo "SHA: $GITHUB_SHA"
           echo "Actor: $GITHUB_ACTOR"
