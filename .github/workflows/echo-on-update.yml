@@ -2,11 +2,11 @@ name: Echo on file update
 
 on:
   push:
-    branches: [ main ]          # <-- change if your branch is different
+    branches: [ main ]          
     paths:
-      - index.html              # <-- or 'configs/app.env' or any glob like 'configs/**'
+      - index.html             
 
-  workflow_dispatch:            # optional: run manually from Actions tab
+  workflow_dispatch:            
 
 jobs:
   Github-Actions-Trigger-Job:
