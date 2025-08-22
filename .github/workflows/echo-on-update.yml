@@ -1,21 +1,22 @@
-name: Echo on file update
+name: Echo on PR merge to main
 
 on:
-  push:
-    branches: [ main ]          
-    paths:
-      - index.html             
-
-  workflow_dispatch:            
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  Github-Actions-Trigger-Job:
+  echo-on-merge:
+    # ensure it runs only if the PR was actually merged (not just closed)
+    if: ${{ github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Show commit info
+      - name: Echo merge info
         run: |
-          echo "Github Actions Triggered"
-          echo "Ref: $GITHUB_REF"
-          echo "SHA: $GITHUB_SHA"
-          echo "Actor: $GITHUB_ACTOR"
-          echo "Updated by: $GITHUB_EVENT_NAME"
+          echo "✅ PR #${{ github.event.pull_request.number }} merged into main"
+          echo "Title:        ${{ github.event.pull_request.title }}"
+          echo "Merged by:    ${{ github.event.pull_request.merged_by.login }}"
+          echo "From branch:  ${{ github.event.pull_request.head.ref }}"
+          echo "To branch:    ${{ github.event.pull_request.base.ref }}"
+          echo "Merge commit: ${{ github.event.pull_request.merge_commit_sha }}"
