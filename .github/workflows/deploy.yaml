@@ -12,14 +12,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-      - run: echo "Terraform init, plan  in Progress"
+        uses: actions/checkout@v4
+
       - name: Terraform init
-      - run: echo "Terraform init,  in Progress"
+        run: echo "Terraform init in Progress"
+
       - name: Terraform fmt
-      - run: echo "Terraform fmt in Progress"
-      - name: Terraform Validate
-      - run: echo "Terraform validate in Progress"
-      - name: Terraform Plan
-      - run: echo "Terraform Plan in Progress"
-      - name: Terraform Apply
-      - run: echo "Terraform Apply in Progress"
+        run: echo "Terraform fmt in Progress"
+
+      - name: Terraform validate
+        run: echo "Terraform validate in Progress"
+
+      - name: Terraform plan
+        run: echo "Terraform plan in Progress"
+
+      - name: Terraform apply
+        run: echo "Terraform apply in Progress"
