@@ -1,20 +1,29 @@
-name: Echo on PR merge to main
+name: Echo on PR merge (staging -> main, terragrunt.hcl changed)
+
 on:
-  push:
-    branches: [main]
+  pull_request:
+    types: [closed]           # fire when PR is closed (merged or not)
+    branches: [main]          # base branch must be main
+    paths:
+      - terragrunt.hcl        # run only if this file is part of the PR
   workflow_dispatch:
 
 jobs:
   echo-on-merge:
-    # ensure it runs only if the PR was actually merged (not just closed)
-    if: ${{ github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' }}
+    if: >
+      ${{
+        github.event.pull_request.merged == true &&
+        github.event.pull_request.base.ref == 'main' &&
+        github.event.pull_request.head.ref == 'staging'
+      }}
     runs-on: ubuntu-latest
     steps:
       - name: Echo merge info
         run: |
-          echo "PR #${{ github.event.pull_request.number }} merged into main"
+          echo "✅ PR #${{ github.event.pull_request.number }} merged from 'staging' to 'main'"
           echo "Title:        ${{ github.event.pull_request.title }}"
           echo "Merged by:    ${{ github.event.pull_request.merged_by.login }}"
           echo "From branch:  ${{ github.event.pull_request.head.ref }}"
           echo "To branch:    ${{ github.event.pull_request.base.ref }}"
           echo "Merge commit: ${{ github.event.pull_request.merge_commit_sha }}"
+          echo "Note: terragrunt.hcl was part of this PR."
