@@ -21,16 +21,58 @@ const body   = pm.response.json();
 const sha    = body.sha;
 let   text   = b64decUtf8(body.content);
 
-const ROLE_ARN   = pm.collectionVariables.get("role_arn");
-const BUCKET     = pm.collectionVariables.get("bucket_name");
+const ROLE_ARN   = pm.collectionVariables.get("role_arn");      // e.g. arn:aws:iam::1234567890:role/project-automation-role
+const BUCKET     = pm.collectionVariables.get("bucket_name");   // e.g. dev
 const COMMIT_MSG = pm.collectionVariables.get("commit_message") || "Postman: targeted edits";
 
 /***********************
  * Helpers
  ***********************/
 
-// 1) Add ROLE_ARN to the first `name = [ ... ]` array (cmk_user_iam_arns.name)
-function addArnToFirstArrayAfterAnchor(fullText, anchorRegex, arn, indentSpaces = 8){
+/**
+ * Utility: extract leading indent of the line that contains index 'idx'
+ */
+function lineIndentOf(s, idx){
+  const lineStart = s.lastIndexOf('\n', idx) + 1;
+  let i = lineStart, n = 0;
+  while (i < s.length && s[i] === ' ') { i++; n++; }
+  return n;
+}
+
+/**
+ * Utility: from raw inside-[...] text, extract all quoted items.
+ */
+function extractQuotedItems(inside){
+  const items = [];
+  const re = /"([^"]+)"/g;
+  let m; while ((m = re.exec(inside)) !== null) items.push(m[1]);
+  return items;
+}
+
+/**
+ * Pretty-print an array of string items as:
+ *   headerLine[
+ *     "a",
+ *     "b",
+ *     "c"
+ *   ]
+ * @param baseIndent number of spaces for the header indent ("name = [")
+ * @param itemsIndent additional spaces for items (typically +2)
+ */
+function renderPrettyArray(items, baseIndent, itemsIndent){
+  const head = ' '.repeat(baseIndent) + '[';
+  const itemPad = ' '.repeat(baseIndent + itemsIndent);
+  const tail = '\n' + ' '.repeat(baseIndent) + ']';
+  if (items.length === 0) return head + tail;
+  const body = '\n' + items.map(v => `${itemPad}"${v}"`).join(',\n');
+  return head + body + tail;
+}
+
+/**
+ * 1) Normalize and add ROLE_ARN to the first array after "name = ["
+ *    (cmk_user_iam_arns.name), with clean formatting.
+ */
+function addArnToFirstArrayAfterAnchor(fullText, anchorRegex, arn, itemsIndent = 2){
   const anchorMatch = fullText.match(anchorRegex);
   if (!anchorMatch) return fullText;
 
@@ -39,59 +81,66 @@ function addArnToFirstArrayAfterAnchor(fullText, anchorRegex, arn, indentSpaces 
   const openIdx     = afterAnchor.indexOf('[');
   if (openIdx < 0) return fullText;
 
-  const start = anchorIdx + openIdx + 1;
-  const end   = fullText.indexOf(']', start);
+  const start = anchorIdx + openIdx + 1;       // after '['
+  const end   = fullText.indexOf(']', start);  // matching ']'
   if (end < 0) return fullText;
 
+  // Extract/normalize items
   const inside = fullText.slice(start, end);
-  if (inside.includes(`"${arn}"`)) return fullText; // already present
+  let items = extractQuotedItems(inside);
 
-  const indent     = ' '.repeat(indentSpaces);
-  const needsComma = inside.trim().length > 0 && !inside.trim().endsWith(',');
-  
-  // Ensure the closing bracket ] is on its own line after we insert
-  const insertion = `${inside}${needsComma ? ',' : ''}\n${indent}"${arn}"\n`;
+  if (!items.includes(arn)) items.push(arn);
 
-  return fullText.slice(0, start) + insertion + fullText.slice(end);
+  // Indentation: align with the line that contains the '['
+  const baseIndent = lineIndentOf(fullText, start);
+  const pretty = renderPrettyArray(items, baseIndent, itemsIndent);
+
+  // Replace the whole [ ... ] section (including the brackets)
+  return fullText.slice(0, start - 1) + pretty + fullText.slice(end + 1);
 }
 
-// 2) Add ROLE_ARN to ALL "aws:PrincipalArn" = [ ... ] lists
-function addArnToAllPrincipalArnLists(fullText, arn){
-  const re = /("aws:PrincipalArn"\s*=\s*\[)([\s\S]*?)(\])/g;
-  return fullText.replace(re, (m, head, contents, tail) => {
-    if (contents.includes(`"${arn}"`)) return m;
-    const trimmed    = contents.trim();
-    const indentMatch= contents.match(/\n(\s*)[^\s]/);
-    const indent     = indentMatch ? indentMatch[1] : '              ';
-    const needsComma = trimmed.length > 0 && !trimmed.endsWith(',');
-    const injected   = `${contents}${needsComma ? ',' : ''}\n${indent}"${arn}"\n`;
-    return head + injected + tail;
+/**
+ * 2) Add ROLE_ARN to ALL `"aws:PrincipalArn" = [ ... ]` lists,
+ *    and pretty-format each list.
+ */
+function addArnToAllPrincipalArnLists(fullText, arn, itemsIndent = 2){
+  const re = /("aws:PrincipalArn"\s*=\s*)(\[\s*[\s\S]*?\s*\])/g;
+  return fullText.replace(re, (m, head, arrayBlock) => {
+    // Find raw inside
+    const startBracket = arrayBlock.indexOf('[');
+    const endBracket   = arrayBlock.lastIndexOf(']');
+    const inside       = arrayBlock.slice(startBracket + 1, endBracket);
+
+    let items = extractQuotedItems(inside);
+    if (!items.includes(arn)) items.push(arn);
+
+    // Base indent: indent of the line where '[' sits in the original text
+    const baseIndent = lineIndentOf(m, head.length + startBracket);
+    const pretty = renderPrettyArray(items, baseIndent, itemsIndent);
+
+    return head + pretty;
   });
 }
 
-// 3) Ensure a ProjectAccess block exists for ROLE_ARN.
-//    - If a placeholder block uses ProjectDevRole → replace it with ROLE_ARN
-//    - If no block exists for ROLE_ARN → append a new one at the end of Statement array
+/**
+ * 3) Ensure a ProjectAccess block exists for ROLE_ARN:
+ *    - If a placeholder block has Principal ... ProjectDevRole => replace with ROLE_ARN
+ *    - If no block exists for ROLE_ARN => append a new one at end of Statement = [ ... ]
+ */
 function ensureProjectAccessForRole(fullText, roleArn, bucketName){
-  // Find all ProjectAccess blocks and their principal ARNs
   const blockRe = /{[\s\S]*?Sid\s*=\s*"ProjectAccess"[\s\S]*?Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}[\s\S]*?Action\s*=\s*\[[^\]]*?\][\s\S]*?Resource\s*=\s*"arn:aws:s3:::[^"]+"\s*}/g;
   let hasForRole = false;
-  let foundPlaceholder = false;
-  let replacedText = fullText;
 
-  // 3a) Replace placeholder ProjectDevRole if present
-  replacedText = replacedText.replace(blockRe, (block) => {
+  let replacedText = fullText.replace(blockRe, (block) => {
     const m = block.match(/Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"/);
     const principalArn = m ? m[1] : null;
 
     if (principalArn === roleArn) {
       hasForRole = true;
-      return block; // already perfect for this role
+      return block; // already for this role
     }
     if (principalArn && /:role\/ProjectDevRole$/.test(principalArn)) {
-      foundPlaceholder = true;
-      hasForRole = true; // after replacement it will be for this role
-      // Replace only the Principal ARN inside the block
+      hasForRole = true;
       return block.replace(
         /Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}/,
         `Principal = { AWS = "${roleArn}" }`
@@ -100,14 +149,13 @@ function ensureProjectAccessForRole(fullText, roleArn, bucketName){
     return block;
   });
 
-  if (hasForRole) {
-    return replacedText; // either existed or we converted placeholder
-  }
+  if (hasForRole) return replacedText;
 
-  // 3b) No existing block for roleArn → append a new one at end of Statement array
+  // Append new block at end of Statement array
   const stmtStart = replacedText.indexOf('Statement = [');
   if (stmtStart < 0) return replacedText;
-  // Find the closing bracket of Statement array based on formatting (newline + 4 spaces + ])
+
+  // Find the closing bracket for Statement = [ ... ]
   const closeIdx = replacedText.indexOf('\n    ]', stmtStart);
   if (closeIdx < 0) return replacedText;
 
@@ -127,13 +175,13 @@ function ensureProjectAccessForRole(fullText, roleArn, bucketName){
 /***********************
  * Apply edits
  ***********************/
-// Add to cmk_user_iam_arns.name
-text = addArnToFirstArrayAfterAnchor(text, /name\s*=\s*\[/, ROLE_ARN, 8);
+// 1) cmk_user_iam_arns.name = [ ... ]  (normalize + add role)
+text = addArnToFirstArrayAfterAnchor(text, /name\s*=\s*\[/, ROLE_ARN, 2);
 
-// Add to both deny list PrincipalArn arrays
-text = addArnToAllPrincipalArnLists(text, ROLE_ARN);
+// 2) All "aws:PrincipalArn" lists  (normalize + add role)
+text = addArnToAllPrincipalArnLists(text, ROLE_ARN, 2);
 
-// Ensure ProjectAccess block exists for this role (replace placeholder or append new)
+// 3) Ensure/append ProjectAccess for this ROLE_ARN
 text = ensureProjectAccessForRole(text, ROLE_ARN, BUCKET);
 
 /***********************
