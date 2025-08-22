@@ -14,7 +14,7 @@ jobs:
     steps:
       - name: Echo merge info
         run: |
-          echo "✅ PR #${{ github.event.pull_request.number }} merged into main"
+          echo "PR #${{ github.event.pull_request.number }} merged into main"
           echo "Title:        ${{ github.event.pull_request.title }}"
           echo "Merged by:    ${{ github.event.pull_request.merged_by.login }}"
           echo "From branch:  ${{ github.event.pull_request.head.ref }}"
