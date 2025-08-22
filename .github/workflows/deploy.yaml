@@ -1,29 +1,36 @@
-name: Echo on PR merge (staging -> main, terragrunt.hcl changed)
+name: Echo on merge to main (terragrunt.hcl)
 
 on:
-  pull_request:
-    types: [closed]           # fire when PR is closed (merged or not)
-    branches: [main]          # base branch must be main
+  push:
+    branches: [ main ]              # attach runs to main
     paths:
-      - terragrunt.hcl        # run only if this file is part of the PR
+      - terragrunt.hcl              # only when this file changes in the push
   workflow_dispatch:
 
 jobs:
-  echo-on-merge:
-    if: >
+  echo-on-merge-to-main:
+    # Run only if the push looks like a merge commit, and came from 'staging'
+    # Covers common merge messages:
+    #  - "Merge pull request #7 from user/staging"
+    #  - "Merge branch 'staging' into main"
+    if: >-
       ${{
-        github.event.pull_request.merged == true &&
-        github.event.pull_request.base.ref == 'main' &&
-        github.event.pull_request.head.ref == 'staging'
+        (
+          startsWith(github.event.head_commit.message, 'Merge pull request') ||
+          startsWith(github.event.head_commit.message, 'Merge branch')
+        )
+        && (
+          contains(github.event.head_commit.message, '/staging') ||
+          contains(github.event.head_commit.message, "'staging'") ||
+          contains(github.event.head_commit.message, 'staging')
+        )
       }}
     runs-on: ubuntu-latest
     steps:
       - name: Echo merge info
         run: |
-          echo "✅ PR #${{ github.event.pull_request.number }} merged from 'staging' to 'main'"
-          echo "Title:        ${{ github.event.pull_request.title }}"
-          echo "Merged by:    ${{ github.event.pull_request.merged_by.login }}"
-          echo "From branch:  ${{ github.event.pull_request.head.ref }}"
-          echo "To branch:    ${{ github.event.pull_request.base.ref }}"
-          echo "Merge commit: ${{ github.event.pull_request.merge_commit_sha }}"
-          echo "Note: terragrunt.hcl was part of this PR."
+          echo "✅ Merge detected on main with terragrunt.hcl changed"
+          echo "Branch: main"
+          echo "Commit: ${{ github.sha }}"
+          echo "Actor:  ${{ github.actor }}"
+          echo "Msg:    ${{ github.event.head_commit.message }}"
