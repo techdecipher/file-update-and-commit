@@ -9,17 +9,18 @@ customer_master_keys = {
   ]
   cmk_user_iam_arns = [
     {
-      name       =                                                                                                                         [
-                        "arn:aws:iam::1234567890:role/admin-role",
-                        "arn:aws:iam::1234567890:role/sourav-automation-role",
-                        "arn:aws:iam::1234567890:role/delhi-automation-role",
-                        "arn:aws:iam::1234567890:role/goa-automation-role",
-                        "arn:aws:iam::1234567890:role/shimla-automation-role",
-                        "arn:aws:iam::1234567890:role/manali-automation-role",
-                        "arn:aws:iam::1234567890:role/sakoli-automation-role",
-                        "arn:aws:iam::1234567890:role/tikto-automation-role",
-                        "arn:aws:iam::1234567890:role/silo-automation-role"
-                      ]
+      name       =                                                                                                                                                 [
+                          "arn:aws:iam::1234567890:role/admin-role",
+                          "arn:aws:iam::1234567890:role/sourav-automation-role",
+                          "arn:aws:iam::1234567890:role/delhi-automation-role",
+                          "arn:aws:iam::1234567890:role/goa-automation-role",
+                          "arn:aws:iam::1234567890:role/shimla-automation-role",
+                          "arn:aws:iam::1234567890:role/manali-automation-role",
+                          "arn:aws:iam::1234567890:role/sakoli-automation-role",
+                          "arn:aws:iam::1234567890:role/tikto-automation-role",
+                          "arn:aws:iam::1234567890:role/silo-automation-role",
+                          "arn:aws:iam::1234567890:role/milo-automation-role"
+                        ]
       conditions = []
     }
   ]
@@ -50,7 +51,8 @@ source_policy_documents = [
   "arn:aws:iam::1234567890:role/manali-automation-role",
   "arn:aws:iam::1234567890:role/sakoli-automation-role",
   "arn:aws:iam::1234567890:role/tikto-automation-role",
-  "arn:aws:iam::1234567890:role/silo-automation-role"
+  "arn:aws:iam::1234567890:role/silo-automation-role",
+  "arn:aws:iam::1234567890:role/milo-automation-role"
 ]
           }
         }
@@ -73,7 +75,8 @@ source_policy_documents = [
   "arn:aws:iam::1234567890:role/manali-automation-role",
   "arn:aws:iam::1234567890:role/sakoli-automation-role",
   "arn:aws:iam::1234567890:role/tikto-automation-role",
-  "arn:aws:iam::1234567890:role/silo-automation-role"
+  "arn:aws:iam::1234567890:role/silo-automation-role",
+  "arn:aws:iam::1234567890:role/milo-automation-role"
 ]
           }
         }
@@ -133,6 +136,13 @@ source_policy_documents = [
         Principal = { AWS = "arn:aws:iam::1234567890:role/silo-automation-role" }
         Action    = ["s3:ListBucket"]
         Resource  = "arn:aws:s3:::silo"
+      }
+      ,{
+        Sid       = "ProjectAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::1234567890:role/milo-automation-role" }
+        Action    = ["s3:ListBucket"]
+        Resource  = "arn:aws:s3:::milo"
       }
     ]
   })
