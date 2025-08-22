@@ -1,4 +1,35 @@
-// Add ARN to first array after "name = ["
+/***********************
+ * UTF-8 safe base64
+ ***********************/
+function b64decUtf8(b64){
+  const bin = atob(b64.replace(/\n/g,''));
+  let out = '';
+  for (let i=0;i<bin.length;i++) out += '%' + ('00'+bin.charCodeAt(i).toString(16)).slice(-2);
+  return decodeURIComponent(out);
+}
+function b64encUtf8(str){
+  const utf8 = unescape(encodeURIComponent(str));
+  let out = '';
+  for (let i=0;i<utf8.length;i++) out += String.fromCharCode(utf8.charCodeAt(i));
+  return btoa(out);
+}
+
+/***********************
+ * Inputs from variables
+ ***********************/
+const body   = pm.response.json();
+const sha    = body.sha;
+let   text   = b64decUtf8(body.content);
+
+const ROLE_ARN   = pm.collectionVariables.get("role_arn");
+const BUCKET     = pm.collectionVariables.get("bucket_name");
+const COMMIT_MSG = pm.collectionVariables.get("commit_message") || "Postman: targeted edits";
+
+/***********************
+ * Helpers
+ ***********************/
+
+// 1) Add ROLE_ARN to the first `name = [ ... ]` array (cmk_user_iam_arns.name)
 function addArnToFirstArrayAfterAnchor(fullText, anchorRegex, arn, indentSpaces = 8){
   const anchorMatch = fullText.match(anchorRegex);
   if (!anchorMatch) return fullText;
@@ -23,3 +54,97 @@ function addArnToFirstArrayAfterAnchor(fullText, anchorRegex, arn, indentSpaces 
 
   return fullText.slice(0, start) + insertion + fullText.slice(end);
 }
+
+// 2) Add ROLE_ARN to ALL "aws:PrincipalArn" = [ ... ] lists
+function addArnToAllPrincipalArnLists(fullText, arn){
+  const re = /("aws:PrincipalArn"\s*=\s*\[)([\s\S]*?)(\])/g;
+  return fullText.replace(re, (m, head, contents, tail) => {
+    if (contents.includes(`"${arn}"`)) return m;
+    const trimmed    = contents.trim();
+    const indentMatch= contents.match(/\n(\s*)[^\s]/);
+    const indent     = indentMatch ? indentMatch[1] : '              ';
+    const needsComma = trimmed.length > 0 && !trimmed.endsWith(',');
+    const injected   = `${contents}${needsComma ? ',' : ''}\n${indent}"${arn}"\n`;
+    return head + injected + tail;
+  });
+}
+
+// 3) Ensure a ProjectAccess block exists for ROLE_ARN.
+//    - If a placeholder block uses ProjectDevRole → replace it with ROLE_ARN
+//    - If no block exists for ROLE_ARN → append a new one at the end of Statement array
+function ensureProjectAccessForRole(fullText, roleArn, bucketName){
+  // Find all ProjectAccess blocks and their principal ARNs
+  const blockRe = /{[\s\S]*?Sid\s*=\s*"ProjectAccess"[\s\S]*?Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}[\s\S]*?Action\s*=\s*\[[^\]]*?\][\s\S]*?Resource\s*=\s*"arn:aws:s3:::[^"]+"\s*}/g;
+  let hasForRole = false;
+  let foundPlaceholder = false;
+  let replacedText = fullText;
+
+  // 3a) Replace placeholder ProjectDevRole if present
+  replacedText = replacedText.replace(blockRe, (block) => {
+    const m = block.match(/Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"/);
+    const principalArn = m ? m[1] : null;
+
+    if (principalArn === roleArn) {
+      hasForRole = true;
+      return block; // already perfect for this role
+    }
+    if (principalArn && /:role\/ProjectDevRole$/.test(principalArn)) {
+      foundPlaceholder = true;
+      hasForRole = true; // after replacement it will be for this role
+      // Replace only the Principal ARN inside the block
+      return block.replace(
+        /Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}/,
+        `Principal = { AWS = "${roleArn}" }`
+      );
+    }
+    return block;
+  });
+
+  if (hasForRole) {
+    return replacedText; // either existed or we converted placeholder
+  }
+
+  // 3b) No existing block for roleArn → append a new one at end of Statement array
+  const stmtStart = replacedText.indexOf('Statement = [');
+  if (stmtStart < 0) return replacedText;
+  // Find the closing bracket of Statement array based on formatting (newline + 4 spaces + ])
+  const closeIdx = replacedText.indexOf('\n    ]', stmtStart);
+  if (closeIdx < 0) return replacedText;
+
+  const insertPos = closeIdx;
+  const block =
+`\n      ,{
+        Sid       = "ProjectAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "${roleArn}" }
+        Action    = ["s3:ListBucket"]
+        Resource  = "arn:aws:s3:::${bucketName}"
+      }`;
+
+  return replacedText.slice(0, insertPos) + block + replacedText.slice(insertPos);
+}
+
+/***********************
+ * Apply edits
+ ***********************/
+// Add to cmk_user_iam_arns.name
+text = addArnToFirstArrayAfterAnchor(text, /name\s*=\s*\[/, ROLE_ARN, 8);
+
+// Add to both deny list PrincipalArn arrays
+text = addArnToAllPrincipalArnLists(text, ROLE_ARN);
+
+// Ensure ProjectAccess block exists for this role (replace placeholder or append new)
+text = ensureProjectAccessForRole(text, ROLE_ARN, BUCKET);
+
+/***********************
+ * Build payload for PUT
+ ***********************/
+const payload = {
+  message: COMMIT_MSG,
+  content: b64encUtf8(text),
+  sha: sha,
+  branch: pm.collectionVariables.get("branch")
+};
+
+pm.collectionVariables.set("payload", JSON.stringify(payload));
+pm.collectionVariables.set("sha", sha);
