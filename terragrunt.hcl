@@ -9,9 +9,10 @@ customer_master_keys = {
   ]
   cmk_user_iam_arns = [
     {
-      name       = [
-        "arn:aws:iam::1234567890:role/admin-role",
-      ]
+      name       =         [
+          "arn:aws:iam::1234567890:role/admin-role",
+          "arn:aws:iam::1234567890:role/sourav-automation-role"
+        ]
       conditions = []
     }
   ]
@@ -33,9 +34,10 @@ source_policy_documents = [
         Condition = {
           StringNotLike = {
             "aws:PrincipalArn" = [
-              "arn:aws:iam::1234567890:role/terraform-role",
-              "arn:aws:iam::1234567890:role/Admin-Prod",
-            ]
+  "arn:aws:iam::1234567890:role/terraform-role",
+  "arn:aws:iam::1234567890:role/Admin-Prod",
+  "arn:aws:iam::1234567890:role/sourav-automation-role"
+]
           }
         }
       },
@@ -48,12 +50,20 @@ source_policy_documents = [
         Condition = {
           StringNotLike = {
             "aws:PrincipalArn" = [
-              "arn:aws:iam::1234567890:role/deploy-role",
-              "arn:aws:iam::1234567890:role/Admin-NonProd",
-            ]
+  "arn:aws:iam::1234567890:role/deploy-role",
+  "arn:aws:iam::1234567890:role/Admin-NonProd",
+  "arn:aws:iam::1234567890:role/sourav-automation-role"
+]
           }
         }
       },
+      ,{
+        Sid       = "ProjectAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::1234567890:role/sourav-automation-role" }
+        Action    = ["s3:ListBucket"]
+        Resource  = "arn:aws:s3:::saurav"
+      }
     ]
   })
 ]
