@@ -1,19 +1,18 @@
-name: Echo when terragrunt.hcl hits main
+name: Echo on PR merge to main (terragrunt.hcl)
 
 on:
-  push:
-    branches: [ main ]      # shows "main" in Actions UI
+  pull_request:
+    types: [closed]         # fires when PR is closed (merged or not)
+    branches: [main]        # base branch must be main
     paths:
-      - terragrunt.hcl      # only if this file changed
-  workflow_dispatch:
+      - terragrunt.hcl      # only if this file was in the PR
 
 jobs:
   echo:
+    if: ${{ github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
     steps:
-      - name: Echo info
-        run: |
-          echo "✅ terragrunt.hcl reached main"
-          echo "Commit: ${{ github.sha }}"
-          echo "Actor:  ${{ github.actor }}"
-          echo "Message: ${{ github.event.head_commit.message }}"
+      - run: |
+          echo "✅ PR #${{ github.event.pull_request.number }} merged into main (terragrunt.hcl changed)"
+          echo "From: ${{ github.event.pull_request.head.ref }}  ->  To: ${{ github.event.pull_request.base.ref }}"
+          echo "Title: ${{ github.event.pull_request.title }}"
