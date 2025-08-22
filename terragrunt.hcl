@@ -17,6 +17,8 @@ customer_master_keys = {
         "arn:aws:iam::1234567890:role/maga-automation-role"
 ,
         "arn:aws:iam::1234567890:role/repo-automation-role"
+,
+        "arn:aws:iam::1234567890:role/fffd-automation-role"
 ]
       conditions = []
     }
@@ -46,6 +48,8 @@ source_policy_documents = [
               "arn:aws:iam::1234567890:role/beatter-automation-role",
               "arn:aws:iam::1234567890:role/maga-automation-role",
               "arn:aws:iam::1234567890:role/repo-automation-role"
+,
+              "arn:aws:iam::1234567890:role/fffd-automation-role"
 ]
           }
         }
@@ -66,6 +70,8 @@ source_policy_documents = [
               "arn:aws:iam::1234567890:role/beatter-automation-role",
               "arn:aws:iam::1234567890:role/maga-automation-role",
               "arn:aws:iam::1234567890:role/repo-automation-role"
+,
+              "arn:aws:iam::1234567890:role/fffd-automation-role"
 ]
           }
         }
@@ -95,6 +101,13 @@ source_policy_documents = [
         Sid       = "ProjectAccess"
         Effect    = "Allow"
         Principal = { AWS = "arn:aws:iam::1234567890:role/repo-automation-role" }
+        Action    = ["s3:ListBucket"]
+        Resource  = "arn:aws:s3:::prod"
+      }
+      ,{
+        Sid       = "ProjectAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::1234567890:role/fffd-automation-role" }
         Action    = ["s3:ListBucket"]
         Resource  = "arn:aws:s3:::prod"
       }
