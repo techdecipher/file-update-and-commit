@@ -1,10 +1,7 @@
 name: Echo on PR merge to main
-
 on:
-  pull_request:
-    types: [closed]
+  push:
     branches: [main]
-  workflow_dispatch:
 
 jobs:
   echo-on-merge:
