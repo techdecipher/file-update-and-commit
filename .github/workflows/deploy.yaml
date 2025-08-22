@@ -1,18 +1,25 @@
-name: Echo on PR merge to main (terragrunt.hcl)
+name: Echo when terragrunt.hcl reaches main (via PR)
 
 on:
-  pull_request:
-    types: [closed]         # fires when PR is closed (merged or not)
-    branches: [main]        # base branch must be main
+  push:
+    branches: [ main ]
     paths:
-      - terragrunt.hcl      # only if this file was in the PR
+      - terragrunt.hcl
+  workflow_dispatch:
 
 jobs:
-  echo:
-    if: ${{ github.event.pull_request.merged == true }}
+  terraform-phases-mimic:
     runs-on: ubuntu-latest
     steps:
-      - run: |
-          echo "✅ PR #${{ github.event.pull_request.number }} merged into main (terragrunt.hcl changed)"
-          echo "From: ${{ github.event.pull_request.head.ref }}  ->  To: ${{ github.event.pull_request.base.ref }}"
-          echo "Title: ${{ github.event.pull_request.title }}"
+      - name: Checkout code
+      - run: echo "Terraform init, plan  in Progress"
+      - name: Terraform init
+      - run: echo "Terraform init,  in Progress"
+      - name: Terraform fmt
+      - run: echo "Terraform fmt in Progress"
+      - name: Terraform Validate
+      - run: echo "Terraform validate in Progress"
+      - name: Terraform Plan
+      - run: echo "Terraform Plan in Progress"
+      - name: Terraform Apply
+      - run: echo "Terraform Apply in Progress"
