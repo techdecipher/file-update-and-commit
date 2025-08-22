@@ -1,196 +1,22 @@
-/***********************
- * UTF-8 safe base64
- ***********************/
-function b64decUtf8(b64){
-  const bin = atob(b64.replace(/\n/g,''));
-  let out = '';
-  for (let i=0;i<bin.length;i++) out += '%' + ('00'+bin.charCodeAt(i).toString(16)).slice(-2);
-  return decodeURIComponent(out);
-}
-function b64encUtf8(str){
-  const utf8 = unescape(encodeURIComponent(str));
-  let out = '';
-  for (let i=0;i<utf8.length;i++) out += String.fromCharCode(utf8.charCodeAt(i));
-  return btoa(out);
-}
+name: Echo on PR merge to main
 
-/***********************
- * Inputs from variables
- ***********************/
-const body   = pm.response.json();
-const sha    = body.sha;
-let   text   = b64decUtf8(body.content);
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
 
-const ROLE_ARN   = pm.collectionVariables.get("role_arn");      // e.g. arn:aws:iam::123...:role/project-automation-role
-const BUCKET     = pm.collectionVariables.get("bucket_name");   // e.g. dev
-const COMMIT_MSG = pm.collectionVariables.get("commit_message") || "Postman: targeted edits";
-
-/***********************
- * Small utilities
- ***********************/
-
-// Leading indent (number of spaces) of the line that contains index "idx".
-function lineIndentOf(s, idx){
-  const lineStart = s.lastIndexOf('\n', idx) + 1;
-  let i = lineStart, n = 0;
-  while (i < s.length && s[i] === ' ') { i++; n++; }
-  return n;
-}
-
-// Extract all quoted items from text that is inside [ ... ].
-function extractQuotedItems(inside){
-  const items = [];
-  const re = /"([^"]+)"/g;
-  let m; while ((m = re.exec(inside)) !== null) items.push(m[1]);
-  return items;
-}
-
-// Pretty-print an array block aligned like:
-//
-//   <baseIndent>[
-//     "a",
-//     "b"
-//   ]
-//
-// itemsIndent = extra spaces for items (typically 2)
-function renderPrettyArray(items, baseIndent, itemsIndent){
-  const head   = ' '.repeat(baseIndent) + '[';
-  const itemPad= ' '.repeat(baseIndent + itemsIndent);
-  const tail   = '\n' + ' '.repeat(baseIndent) + ']';
-  if (items.length === 0) return head + tail;
-  const body   = '\n' + items.map(v => `${itemPad}"${v}"`).join(',\n');
-  return head + body + tail;
-}
-
-/***********************
- * 1) cmk_user_iam_arns.name = [ ... ]
- *    Normalize + add ROLE_ARN + force header "name = ["
- ***********************/
-function addArnToFirstArrayAfterAnchor(fullText, anchorRegex, arn, itemsIndent = 2){
-  const anchorMatch = fullText.match(anchorRegex);
-  if (!anchorMatch) return fullText;
-
-  // Where "name" starts (clean header rebuild will begin here)
-  const nameLineStart = fullText.lastIndexOf('name', fullText.indexOf(anchorMatch[0]));
-  if (nameLineStart < 0) return fullText;
-
-  // Find [ ... ] bounds
-  const anchorIdx   = fullText.indexOf(anchorMatch[0]);
-  const afterAnchor = fullText.slice(anchorIdx);
-  const openIdx     = afterAnchor.indexOf('[');
-  if (openIdx < 0) return fullText;
-
-  const start = anchorIdx + openIdx + 1;       // after '['
-  const end   = fullText.indexOf(']', start);  // matching ']'
-  if (end < 0) return fullText;
-
-  // Extract + normalize items
-  const inside = fullText.slice(start, end);
-  let items = extractQuotedItems(inside);
-  if (!items.includes(arn)) items.push(arn);
-
-  // Normalize header: "name = ["
-  const baseIndent = lineIndentOf(fullText, nameLineStart);
-  const header     = ' '.repeat(baseIndent) + 'name = ';
-  const prettyArr  = renderPrettyArray(items, baseIndent, itemsIndent);
-
-  // Replace from the start of "name" up to after the closing bracket
-  return fullText.slice(0, nameLineStart) + header + prettyArr + fullText.slice(end + 1);
-}
-
-/***********************
- * 2) All "aws:PrincipalArn" = [ ... ] lists
- *    Add ROLE_ARN, pretty-format, and normalize header spacing.
- ***********************/
-function addArnToAllPrincipalArnLists(fullText, arn, itemsIndent = 2){
-  // Match:  "aws:PrincipalArn" = [ ... ]   (capture head and array block)
-  const re = /("aws:PrincipalArn"\s*=\s*)(\[\s*[\s\S]*?\s*\])/g;
-
-  return fullText.replace(re, (m, head, arrayBlock, offset) => {
-    // Pull the raw items between [ and ]
-    const startBracket = arrayBlock.indexOf('[');
-    const endBracket   = arrayBlock.lastIndexOf(']');
-    const inside       = arrayBlock.slice(startBracket + 1, endBracket);
-
-    let items = extractQuotedItems(inside);
-    if (!items.includes(arn)) items.push(arn);
-
-    // Indent for this header line (where '[' sits in the overall text)
-    const baseIndent = lineIndentOf(fullText, offset);
-
-    // Rebuild with normalized header:  "aws:PrincipalArn" = <pretty array>
-    const header = ' '.repeat(baseIndent) + '"aws:PrincipalArn" = ';
-    const pretty = renderPrettyArray(items, baseIndent, itemsIndent);
-
-    return header + pretty;
-  });
-}
-
-/***********************
- * 3) Ensure/adjust ProjectAccess block for ROLE_ARN
- *    - If placeholder Principal ends with ProjectDevRole => replace with ROLE_ARN
- *    - If none exists for ROLE_ARN => append at the end of Statement array
- ***********************/
-function ensureProjectAccessForRole(fullText, roleArn, bucketName){
-  const blockRe = /{[\s\S]*?Sid\s*=\s*"ProjectAccess"[\s\S]*?Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}[\s\S]*?Action\s*=\s*\[[^\]]*?\][\s\S]*?Resource\s*=\s*"arn:aws:s3:::[^"]+"\s*}/g;
-  let hasForRole = false;
-
-  let replacedText = fullText.replace(blockRe, (block) => {
-    const m = block.match(/Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"/);
-    const principalArn = m ? m[1] : null;
-
-    if (principalArn === roleArn) {
-      hasForRole = true;
-      return block; // already correct
-    }
-    if (principalArn && /:role\/ProjectDevRole$/.test(principalArn)) {
-      hasForRole = true;
-      return block.replace(
-        /Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}/,
-        `Principal = { AWS = "${roleArn}" }`
-      );
-    }
-    return block;
-  });
-
-  if (hasForRole) return replacedText;
-
-  // Append new block at the end of Statement = [ ... ]
-  const stmtStart = replacedText.indexOf('Statement = [');
-  if (stmtStart < 0) return replacedText;
-
-  const closeIdx = replacedText.indexOf('\n    ]', stmtStart); // based on your current formatting
-  if (closeIdx < 0) return replacedText;
-
-  const insertPos = closeIdx;
-  const block =
-`\n      ,{
-        Sid       = "ProjectAccess"
-        Effect    = "Allow"
-        Principal = { AWS = "${roleArn}" }
-        Action    = ["s3:ListBucket"]
-        Resource  = "arn:aws:s3:::${bucketName}"
-      }`;
-
-  return replacedText.slice(0, insertPos) + block + replacedText.slice(insertPos);
-}
-
-/***********************
- * Apply edits
- ***********************/
-text = addArnToFirstArrayAfterAnchor(text, /name\s*=\s*\[/, ROLE_ARN, 2);
-text = addArnToAllPrincipalArnLists(text, ROLE_ARN, 2);
-text = ensureProjectAccessForRole(text, ROLE_ARN, BUCKET);
-
-/***********************
- * Build payload for PUT
- ***********************/
-const payload = {
-  message: COMMIT_MSG,
-  content: b64encUtf8(text),
-  sha: sha,
-  branch: pm.collectionVariables.get("branch")
-};
-
-pm.collectionVariables.set("payload", JSON.stringify(payload));
-pm.collectionVariables.set("sha", sha);
+jobs:
+  echo-on-merge:
+    # ensure it runs only if the PR was actually merged (not just closed)
+    if: ${{ github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo merge info
+        run: |
+          echo "✅ PR #${{ github.event.pull_request.number }} merged into main"
+          echo "Title:        ${{ github.event.pull_request.title }}"
+          echo "Merged by:    ${{ github.event.pull_request.merged_by.login }}"
+          echo "From branch:  ${{ github.event.pull_request.head.ref }}"
+          echo "To branch:    ${{ github.event.pull_request.base.ref }}"
+          echo "Merge commit: ${{ github.event.pull_request.merge_commit_sha }}"
