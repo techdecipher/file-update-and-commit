@@ -19,6 +19,8 @@ customer_master_keys = {
         "arn:aws:iam::1234567890:role/repo-automation-role"
 ,
         "arn:aws:iam::1234567890:role/fffd-automation-role"
+,
+        "arn:aws:iam::1234567890:role/tika-automation-role"
 ]
       conditions = []
     }
@@ -50,6 +52,8 @@ source_policy_documents = [
               "arn:aws:iam::1234567890:role/repo-automation-role"
 ,
               "arn:aws:iam::1234567890:role/fffd-automation-role"
+,
+              "arn:aws:iam::1234567890:role/tika-automation-role"
 ]
           }
         }
@@ -72,6 +76,8 @@ source_policy_documents = [
               "arn:aws:iam::1234567890:role/repo-automation-role"
 ,
               "arn:aws:iam::1234567890:role/fffd-automation-role"
+,
+              "arn:aws:iam::1234567890:role/tika-automation-role"
 ]
           }
         }
@@ -110,6 +116,13 @@ source_policy_documents = [
         Principal = { AWS = "arn:aws:iam::1234567890:role/fffd-automation-role" }
         Action    = ["s3:ListBucket"]
         Resource  = "arn:aws:s3:::prod"
+      }
+      ,{
+        Sid       = "ProjectAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::1234567890:role/tika-automation-role" }
+        Action    = ["s3:ListBucket"]
+        Resource  = "arn:aws:s3:::tika"
       }
     ]
   })
