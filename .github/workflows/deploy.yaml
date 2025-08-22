@@ -2,35 +2,24 @@ name: Echo on merge to main (terragrunt.hcl)
 
 on:
   push:
-    branches: [ main ]              # attach runs to main
+    branches: [ main ]
     paths:
-      - terragrunt.hcl              # only when this file changes in the push
+      - terragrunt.hcl
   workflow_dispatch:
 
 jobs:
   echo-on-merge-to-main:
-    # Run only if the push looks like a merge commit, and came from 'staging'
-    # Covers common merge messages:
-    #  - "Merge pull request #7 from user/staging"
-    #  - "Merge branch 'staging' into main"
     if: >-
-      ${{
-        (
-          startsWith(github.event.head_commit.message, 'Merge pull request') ||
-          startsWith(github.event.head_commit.message, 'Merge branch')
-        )
-        && (
-          contains(github.event.head_commit.message, '/staging') ||
-          contains(github.event.head_commit.message, "'staging'") ||
+      ${{ github.event.head_commit &&
+          (startsWith(github.event.head_commit.message, 'Merge pull request') ||
+           startsWith(github.event.head_commit.message, 'Merge branch')) &&
           contains(github.event.head_commit.message, 'staging')
-        )
       }}
     runs-on: ubuntu-latest
     steps:
       - name: Echo merge info
         run: |
           echo "✅ Merge detected on main with terragrunt.hcl changed"
-          echo "Branch: main"
           echo "Commit: ${{ github.sha }}"
           echo "Actor:  ${{ github.actor }}"
           echo "Msg:    ${{ github.event.head_commit.message }}"
