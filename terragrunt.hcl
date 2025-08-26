@@ -9,7 +9,7 @@ customer_master_keys = {
   ]
   cmk_user_iam_arns = [
     {
-      name       =             [
+      name       =                   [
         "arn:aws:iam::1234567890:role/admin-role",
         "arn:aws:iam::1234567890:role/project-automation-role",
         "arn:aws:iam::1234567890:role/sunday-automation-role"
