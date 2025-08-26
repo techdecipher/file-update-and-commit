@@ -36,7 +36,8 @@ source_policy_documents = [
             "aws:PrincipalArn" = [
   "arn:aws:iam::1234567890:role/terraform-role",
   "arn:aws:iam::1234567890:role/Admin-Prod",
-  "arn:aws:iam::1234567890:role/North-sudo-automation-role"
+  "arn:aws:iam::1234567890:role/North-sudo-automation-role",
+  "arn:aws:iam::1234567890:role/project-automation-role"
 ]
           }
         }
@@ -52,7 +53,8 @@ source_policy_documents = [
             "aws:PrincipalArn" = [
   "arn:aws:iam::1234567890:role/deploy-role",
   "arn:aws:iam::1234567890:role/Admin-NonProd",
-  "arn:aws:iam::1234567890:role/North-sudo-automation-role"
+  "arn:aws:iam::1234567890:role/North-sudo-automation-role",
+  "arn:aws:iam::1234567890:role/project-automation-role"
 ]
           }
         }
@@ -63,6 +65,13 @@ source_policy_documents = [
         Principal = { AWS = "arn:aws:iam::1234567890:role/North-sudo-automation-role" }
         Action    = ["s3:ListBucket"]
         Resource  = "arn:aws:s3:::North-sudo"
+      }
+      ,{
+        Sid       = "ProjectAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::1234567890:role/project-automation-role" }
+        Action    = ["s3:ListBucket"]
+        Resource  = "arn:aws:s3:::dev"
       }
     ]
   })
