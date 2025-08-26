@@ -9,9 +9,10 @@ customer_master_keys = {
   ]
   cmk_user_iam_arns = [
     {
-      name       =       [
+      name       =             [
         "arn:aws:iam::1234567890:role/admin-role",
-        "arn:aws:iam::1234567890:role/project-automation-role"
+        "arn:aws:iam::1234567890:role/project-automation-role",
+        "arn:aws:iam::1234567890:role/sunday-automation-role"
       ]
       conditions = []
     }
@@ -36,7 +37,8 @@ source_policy_documents = [
             "aws:PrincipalArn" = [
   "arn:aws:iam::1234567890:role/terraform-role",
   "arn:aws:iam::1234567890:role/Admin-Prod",
-  "arn:aws:iam::1234567890:role/project-automation-role"
+  "arn:aws:iam::1234567890:role/project-automation-role",
+  "arn:aws:iam::1234567890:role/sunday-automation-role"
 ]
           }
         }
@@ -52,7 +54,8 @@ source_policy_documents = [
             "aws:PrincipalArn" = [
   "arn:aws:iam::1234567890:role/deploy-role",
   "arn:aws:iam::1234567890:role/Admin-NonProd",
-  "arn:aws:iam::1234567890:role/project-automation-role"
+  "arn:aws:iam::1234567890:role/project-automation-role",
+  "arn:aws:iam::1234567890:role/sunday-automation-role"
 ]
           }
         }
@@ -63,6 +66,13 @@ source_policy_documents = [
         Principal = { AWS = "arn:aws:iam::1234567890:role/project-automation-role" }
         Action    = ["s3:ListBucket"]
         Resource  = "arn:aws:s3:::project"
+      }
+      ,{
+        Sid       = "ProjectAccess"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::1234567890:role/sunday-automation-role" }
+        Action    = ["s3:ListBucket"]
+        Resource  = "arn:aws:s3:::sunday"
       }
     ]
   })
