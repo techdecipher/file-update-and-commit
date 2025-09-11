@@ -121,4 +121,76 @@ def add_arn_to_all_principal_arn_lists(full_text: str, arn: str, items_indent: i
 # ======== 3) ProjectAccess block ========
 def ensure_project_access_for_role(full_text: str, role_arn: str, bucket_name: str) -> str:
     block_re = re.compile(
-        r'{[\s\S]*?Sid\s*=\s*"ProjectAccess"[\s\S]*?Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}[\s\S]*?Action\s*=\s*\[[^\]]*?\][\s\S]*?Resource\s*=\s*"arn:aws:s3:*
+        r'{[\s\S]*?Sid\s*=\s*"ProjectAccess"[\s\S]*?Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}[\s\S]*?Action\s*=\s*\[[^\]]*?\][\s\S]*?Resource\s*=\s*"arn:aws:s3:::[^"]+"\s*}',
+        re.MULTILINE
+    )
+    has_for_role = False
+
+    def replace_block(block: str) -> str:
+        nonlocal has_for_role
+        m = re.search(r'Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"', block)
+        principal_arn = m.group(1) if m else None
+        if principal_arn == role_arn:
+            has_for_role = True
+            return block
+        if principal_arn and principal_arn.endswith(":role/ProjectDevRole"):
+            has_for_role = True
+            return re.sub(
+                r'Principal\s*=\s*{\s*AWS\s*=\s*"([^"]+)"\s*}',
+                f'Principal = {{ AWS = "{role_arn}" }}',
+                block
+            )
+        return block
+
+    replaced_text = block_re.sub(lambda m: replace_block(m.group(0)), full_text)
+    if has_for_role: return replaced_text
+
+    # Append a new block at the end of Statement = [ ... ]
+    stmt_start = replaced_text.find("Statement = [")
+    if stmt_start < 0: return replaced_text
+    close_idx = replaced_text.find("\n    ]", stmt_start)
+    if close_idx < 0: return replaced_text
+
+    insert_pos = close_idx
+    block = f"""
+      ,{{
+        Sid       = "ProjectAccess"
+        Effect    = "Allow"
+        Principal = {{ AWS = "{role_arn}" }}
+        Action    = ["s3:ListBucket"]
+        Resource  = "arn:aws:s3:::{bucket_name}"
+      }}"""
+    return replaced_text[:insert_pos] + block + replaced_text[insert_pos:]
+
+# ========= Lambda handler =========
+def lambda_handler(event, context):
+    # GET file (content + sha)
+    get_url = f"{GITHUB_API}/repos/{OWNER}/{REPO}/contents/{FILE_PATH}?ref={BRANCH}"
+    file_obj = github_api("GET", get_url, GITHUB_TOKEN)
+    sha = file_obj["sha"]
+    text = b64dec_utf8(file_obj["content"])
+
+    # Apply edits
+    text = add_role_to_cmk_user_iam_arns(text, ROLE_ARN, 2)
+    text = add_arn_to_all_principal_arn_lists(text, ROLE_ARN, 2)
+    text = ensure_project_access_for_role(text, ROLE_ARN, BUCKET_NAME)
+
+    # PUT update (commit)
+    put_url = f"{GITHUB_API}/repos/{OWNER}/{REPO}/contents/{FILE_PATH}"
+    body = {
+        "message": COMMIT_MSG,
+        "content": b64enc_utf8(text),
+        "sha": sha,
+        "branch": BRANCH,
+        "committer": {"name": "Lambda Bot", "email": "lambda-bot@users.noreply.github.com"}
+    }
+    result = github_api("PUT", put_url, GITHUB_TOKEN, body)
+
+    return {
+        "statusCode": 200,
+        "body": {
+            "path": result.get("content", {}).get("path"),
+            "commit_sha": result.get("commit", {}).get("sha"),
+            "commit_url": result.get("commit", {}).get("html_url")
+        }
+    }
